@@ -1,12 +1,13 @@
 using JuMP
 using Ipopt
+using Random
 
-model = Model()
+model = Model(Ipopt.Optimizer)
 "dimension of the problem"
 d = 3
 "prime modulus"
 q = 29
-Random.seed!(0)
+Random.seed!(0) # for repeatability
 "b, c: parameters for the optimization problem"
 b, c = (rand(0:q-1, d) for _ in 1:2)
 @variable(model, a[1:d, 1:d])
@@ -40,7 +41,7 @@ function poly_prod(u, v, i)
 	local d = length(u); @assert d == length(v)
 	for j in 1:d
 		k = i-j+1
-		if k < 1
+		if k < 1 # i.e. j > i
 			s-= u[j]*v[k+d]
 		else
 			s+= u[j]*v[k]
@@ -51,8 +52,14 @@ end
 "L¹ distance to qℤ^d"
 @inline distance_qZ(x::Real) = q*(1/2-abs(mod(x/q,1)-1/2))
 @inline distance_qZ(u::Vector) = sum(distance_qZ(u[i]) for i in 1:d)
-pp = poly_prod(b, a*c)
-dqZ = @NLexpression(model, sum(cos(pp[i]*2π/q) for i in 1:d))
+# pp = poly_prod(b, a*c)
+# dqZ = @NLexpression(model, sum(cos(pp[i]*2π/q) for i in 1:d))
 
+# groumpf, le module nonlinear ne connaît pas l'algèbre linéaire, il faut
+# tout refaire à la main
+@NLexpression(model, ac[i=1:d], sum(a[i]*c[j] for j in 1:d))
+@NLexpression(model, bac[i=1:d],
+	sum(b[i]*ac[i-j+1] for j in 1:i) - sum(b[i]*ac[i-j+d+1] for j in i+1:d))
+@NLexpression(model, dqz, sum(1-cos(bac[i]*2π/q) for i in 1:d))
 
 # @NLobjective(model, Min, distance_qZ(poly_prod(b, a * c)))
